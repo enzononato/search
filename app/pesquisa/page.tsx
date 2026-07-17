@@ -7,6 +7,7 @@ import StepProgress from "@/components/StepProgress";
 import {
   UNIDADES,
   EQUIPAMENTO_PRINCIPAL_OPTIONS,
+  EQUIPAMENTO_PRINCIPAL_NENHUM,
   EQUIPAMENTOS_COM_NOTEBOOK,
   ACESSORIOS_NOTEBOOK_OPTIONS,
   RESOLUCAO_TEMPO_OPTIONS,
@@ -14,6 +15,7 @@ import {
   MAX_ITENS_MELHORIA,
   NPS_MIN,
   NPS_MAX,
+  LIMITE_ESTRELA_COMENTARIO,
   type EquipamentoPrincipal,
   type AcessoriosNotebook,
   type ResolucaoTempo,
@@ -55,14 +57,18 @@ type StepId = (typeof ALL_STEPS)[number];
 
 interface FormState {
   unidade: Unidade | "";
-  equipamentoPrincipal: EquipamentoPrincipal | "";
+  equipamentoPrincipal: EquipamentoPrincipal[];
   avaliacaoEquipamento: number | null;
+  comentarioEquipamento: string;
   acessoriosNotebook: AcessoriosNotebook | "";
   usaCelularCorp: boolean | null;
   celularRespondido: boolean;
   avaliacaoCelular: number | null;
+  comentarioCelular: string;
   avaliacaoAtendimento: number | null;
+  comentarioAtendimento: string;
   avaliacaoPresenca: number | null;
+  comentarioPresenca: string;
   resolucaoTempo: ResolucaoTempo | "";
   itensMelhoria: ItemMelhoria[];
   itemMelhoriaOutro: string;
@@ -75,14 +81,18 @@ interface FormState {
 
 const ESTADO_INICIAL: FormState = {
   unidade: "",
-  equipamentoPrincipal: "",
+  equipamentoPrincipal: [],
   avaliacaoEquipamento: null,
+  comentarioEquipamento: "",
   acessoriosNotebook: "",
   usaCelularCorp: null,
   celularRespondido: false,
   avaliacaoCelular: null,
+  comentarioCelular: "",
   avaliacaoAtendimento: null,
+  comentarioAtendimento: "",
   avaliacaoPresenca: null,
+  comentarioPresenca: "",
   resolucaoTempo: "",
   itensMelhoria: [],
   itemMelhoriaOutro: "",
@@ -93,8 +103,8 @@ const ESTADO_INICIAL: FormState = {
   sugestao: "",
 };
 
-function podeTerNotebook(equipamento: EquipamentoPrincipal | ""): boolean {
-  return (EQUIPAMENTOS_COM_NOTEBOOK as string[]).includes(equipamento);
+function podeTerNotebook(equipamentos: EquipamentoPrincipal[]): boolean {
+  return equipamentos.some((e) => (EQUIPAMENTOS_COM_NOTEBOOK as string[]).includes(e));
 }
 
 function stepVisivel(id: StepId, s: FormState): boolean {
@@ -108,7 +118,7 @@ function stepPodeAvancar(id: StepId, s: FormState): boolean {
     case "unidade":
       return s.unidade !== "";
     case "equipamento_principal":
-      return s.equipamentoPrincipal !== "";
+      return s.equipamentoPrincipal.length > 0;
     case "avaliacao_equipamento":
       return s.avaliacaoEquipamento !== null;
     case "acessorios_notebook":
@@ -153,13 +163,17 @@ export default function PesquisaPage() {
   const [form, setForm] = useState<FormState>(ESTADO_INICIAL);
   const [stepId, setStepId] = useState<StepId>("unidade");
   const [enviando, setEnviando] = useState(false);
+  const [enviado, setEnviado] = useState(false);
   const [erroEnvio, setErroEnvio] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!token) {
+    // `enviado` evita corrida com o redirect para /obrigado: sem ele, o
+    // re-render disparado por limpar o token (submissão OK) poderia fazer
+    // este efeito mandar de volta para "/" antes do router.push concluir.
+    if (!token && !enviado) {
       router.replace("/");
     }
-  }, [token, router]);
+  }, [token, enviado, router]);
 
   const visiveis = useMemo(
     () => ALL_STEPS.filter((id) => stepVisivel(id, form)),
@@ -198,13 +212,34 @@ export default function PesquisaPage() {
       unidade: form.unidade,
       equipamento_principal: form.equipamentoPrincipal,
       avaliacao_equipamento: form.avaliacaoEquipamento,
+      comentario_avaliacao_equipamento:
+        form.avaliacaoEquipamento !== null &&
+        form.avaliacaoEquipamento <= LIMITE_ESTRELA_COMENTARIO
+          ? form.comentarioEquipamento.trim() || null
+          : null,
       acessorios_notebook: podeTerNotebook(form.equipamentoPrincipal)
         ? form.acessoriosNotebook
         : "nao_utiliza",
       usa_celular_corp: form.usaCelularCorp,
       avaliacao_celular: form.usaCelularCorp ? form.avaliacaoCelular : null,
+      comentario_avaliacao_celular:
+        form.usaCelularCorp &&
+        form.avaliacaoCelular !== null &&
+        form.avaliacaoCelular <= LIMITE_ESTRELA_COMENTARIO
+          ? form.comentarioCelular.trim() || null
+          : null,
       avaliacao_atendimento: form.avaliacaoAtendimento,
+      comentario_avaliacao_atendimento:
+        form.avaliacaoAtendimento !== null &&
+        form.avaliacaoAtendimento <= LIMITE_ESTRELA_COMENTARIO
+          ? form.comentarioAtendimento.trim() || null
+          : null,
       avaliacao_presenca: form.avaliacaoPresenca,
+      comentario_avaliacao_presenca:
+        form.avaliacaoPresenca !== null &&
+        form.avaliacaoPresenca <= LIMITE_ESTRELA_COMENTARIO
+          ? form.comentarioPresenca.trim() || null
+          : null,
       resolucao_tempo: form.resolucaoTempo,
       itens_melhoria: form.itensMelhoria,
       item_melhoria_outro: form.itensMelhoria.includes("outro")
@@ -238,6 +273,7 @@ export default function PesquisaPage() {
         return;
       }
 
+      setEnviado(true);
       sessionStorage.removeItem(TOKEN_STORAGE_KEY);
       router.push("/obrigado");
     } catch {
@@ -247,7 +283,7 @@ export default function PesquisaPage() {
     }
   }
 
-  if (!token) return null;
+  if (!token && !enviado) return null;
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col p-4 sm:p-6 md:py-10 justify-center min-h-screen">
@@ -416,27 +452,77 @@ function renderStep(
         </Pergunta>
       );
 
-    case "equipamento_principal":
+    case "equipamento_principal": {
+      const toggleEquipamento = (valor: EquipamentoPrincipal) => {
+        if (valor === EQUIPAMENTO_PRINCIPAL_NENHUM) {
+          const novoEstado = form.equipamentoPrincipal.includes(
+            EQUIPAMENTO_PRINCIPAL_NENHUM
+          )
+            ? []
+            : [EQUIPAMENTO_PRINCIPAL_NENHUM];
+          atualizar("equipamentoPrincipal", novoEstado);
+          return;
+        }
+        const semNenhum = form.equipamentoPrincipal.filter(
+          (e) => e !== EQUIPAMENTO_PRINCIPAL_NENHUM
+        );
+        const marcado = semNenhum.includes(valor);
+        atualizar(
+          "equipamentoPrincipal",
+          marcado ? semNenhum.filter((e) => e !== valor) : [...semNenhum, valor]
+        );
+      };
+
       return (
-        <Pergunta icone={monitorIcon} titulo="Qual é o seu equipamento principal de trabalho?">
-          <OpcoesRadio
-            opcoes={EQUIPAMENTO_PRINCIPAL_OPTIONS}
-            valor={form.equipamentoPrincipal}
-            onChange={(v) =>
-              atualizar("equipamentoPrincipal", v as EquipamentoPrincipal)
-            }
-          />
+        <Pergunta
+          icone={monitorIcon}
+          titulo="Qual é o seu equipamento principal de trabalho?"
+          subtitulo="Pode selecionar mais de uma opção."
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            {EQUIPAMENTO_PRINCIPAL_OPTIONS.map((opcao) => {
+              const marcado = form.equipamentoPrincipal.includes(opcao.value);
+              return (
+                <label
+                  key={opcao.value}
+                  className={`flex cursor-pointer items-center gap-3.5 rounded-2xl border p-4.5 transition-all duration-200 select-none ${
+                    marcado
+                      ? "border-blue-600 bg-blue-50/30 text-blue-900 shadow-sm"
+                      : "border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50/30"
+                  }`}
+                >
+                  <div className="flex h-5 items-center">
+                    <input
+                      type="checkbox"
+                      checked={marcado}
+                      className="h-4.5 w-4.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500/20"
+                      onChange={() => toggleEquipamento(opcao.value)}
+                    />
+                  </div>
+                  <span className="text-sm font-medium leading-none">{opcao.label}</span>
+                </label>
+              );
+            })}
+          </div>
         </Pergunta>
       );
+    }
 
     case "avaliacao_equipamento":
       return (
         <Pergunta icone={starIcon} titulo="Como você avalia o seu equipamento?">
-          <div className="py-2">
+          <div className="space-y-4 py-2">
             <StarRating
               value={form.avaliacaoEquipamento}
               onChange={(v) => atualizar("avaliacaoEquipamento", v)}
             />
+            {form.avaliacaoEquipamento !== null &&
+              form.avaliacaoEquipamento <= LIMITE_ESTRELA_COMENTARIO && (
+                <ComentarioNotaBaixa
+                  valor={form.comentarioEquipamento}
+                  onChange={(v) => atualizar("comentarioEquipamento", v)}
+                />
+              )}
           </div>
         </Pergunta>
       );
@@ -500,6 +586,13 @@ function renderStep(
                 Não utilizo este recurso
               </button>
             </div>
+            {form.avaliacaoCelular !== null &&
+              form.avaliacaoCelular <= LIMITE_ESTRELA_COMENTARIO && (
+                <ComentarioNotaBaixa
+                  valor={form.comentarioCelular}
+                  onChange={(v) => atualizar("comentarioCelular", v)}
+                />
+              )}
           </div>
         </Pergunta>
       );
@@ -507,11 +600,18 @@ function renderStep(
     case "avaliacao_atendimento":
       return (
         <Pergunta icone={starIcon} titulo="Como você avalia o atendimento da TI?">
-          <div className="py-2">
+          <div className="space-y-4 py-2">
             <StarRating
               value={form.avaliacaoAtendimento}
               onChange={(v) => atualizar("avaliacaoAtendimento", v)}
             />
+            {form.avaliacaoAtendimento !== null &&
+              form.avaliacaoAtendimento <= LIMITE_ESTRELA_COMENTARIO && (
+                <ComentarioNotaBaixa
+                  valor={form.comentarioAtendimento}
+                  onChange={(v) => atualizar("comentarioAtendimento", v)}
+                />
+              )}
           </div>
         </Pergunta>
       );
@@ -519,11 +619,18 @@ function renderStep(
     case "avaliacao_presenca":
       return (
         <Pergunta icone={starIcon} titulo="Como você avalia a presença/disponibilidade da TI?">
-          <div className="py-2">
+          <div className="space-y-4 py-2">
             <StarRating
               value={form.avaliacaoPresenca}
               onChange={(v) => atualizar("avaliacaoPresenca", v)}
             />
+            {form.avaliacaoPresenca !== null &&
+              form.avaliacaoPresenca <= LIMITE_ESTRELA_COMENTARIO && (
+                <ComentarioNotaBaixa
+                  valor={form.comentarioPresenca}
+                  onChange={(v) => atualizar("comentarioPresenca", v)}
+                />
+              )}
           </div>
         </Pergunta>
       );
@@ -783,6 +890,30 @@ function TextoAberto({
       <div className="flex justify-end text-xs font-semibold text-slate-400 pr-1 select-none">
         {currentCount} / {charLimit}
       </div>
+    </div>
+  );
+}
+
+function ComentarioNotaBaixa({
+  valor,
+  onChange,
+}: {
+  valor: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="animate-fade-in space-y-1.5">
+      <label className="text-xs font-semibold text-slate-500">
+        Quer nos contar o que pegou? (opcional)
+      </label>
+      <textarea
+        value={valor}
+        onChange={(e) => onChange(e.target.value)}
+        maxLength={2000}
+        rows={3}
+        placeholder="Conte um pouco mais sobre o que não funcionou bem..."
+        className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-800 placeholder-slate-400 transition-all focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10"
+      />
     </div>
   );
 }

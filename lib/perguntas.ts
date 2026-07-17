@@ -21,18 +21,22 @@ export type Unidade = (typeof UNIDADES)[number];
 export const EQUIPAMENTO_PRINCIPAL_OPTIONS = [
   { value: "notebook", label: "Notebook" },
   { value: "desktop", label: "Desktop" },
-  { value: "ambos", label: "Ambos" },
+  { value: "celular", label: "Celular" },
   { value: "nenhum", label: "Nenhum" },
 ] as const;
 
 export type EquipamentoPrincipal =
   (typeof EQUIPAMENTO_PRINCIPAL_OPTIONS)[number]["value"];
 
-/** Unidades de equipamento_principal que habilitam a pergunta 4 (acessórios do notebook). */
-export const EQUIPAMENTOS_COM_NOTEBOOK: EquipamentoPrincipal[] = [
-  "notebook",
-  "ambos",
-];
+/**
+ * Q2 é de múltipla escolha. "nenhum" é mutuamente exclusivo com as demais
+ * opções (marcar "nenhum" desmarca o resto e vice-versa) — reforçado tanto
+ * no cliente quanto na validação do servidor.
+ */
+export const EQUIPAMENTO_PRINCIPAL_NENHUM: EquipamentoPrincipal = "nenhum";
+
+/** Presença deste valor em equipamento_principal habilita a pergunta 4 (acessórios do notebook). */
+export const EQUIPAMENTOS_COM_NOTEBOOK: EquipamentoPrincipal[] = ["notebook"];
 
 export const ACESSORIOS_NOTEBOOK_OPTIONS = [
   { value: "sim", label: "Sim" },
@@ -73,6 +77,9 @@ export const MAX_ITENS_MELHORIA = 3;
 export const STARS_MIN = 1;
 export const STARS_MAX = 5;
 
+/** Nota (inclusive) a partir da qual o campo de comentário é oferecido nas perguntas de estrela. */
+export const LIMITE_ESTRELA_COMENTARIO = 2;
+
 export const NPS_MIN = 0;
 export const NPS_MAX = 10;
 
@@ -81,13 +88,17 @@ export const TEXTO_ABERTO_MAX_LEN = 2000;
 
 export interface RespostaPayload {
   unidade: Unidade;
-  equipamento_principal: EquipamentoPrincipal;
+  equipamento_principal: EquipamentoPrincipal[];
   avaliacao_equipamento: number;
+  comentario_avaliacao_equipamento: string | null;
   acessorios_notebook: AcessoriosNotebook;
   usa_celular_corp: boolean;
   avaliacao_celular: number | null;
+  comentario_avaliacao_celular: string | null;
   avaliacao_atendimento: number;
+  comentario_avaliacao_atendimento: string | null;
   avaliacao_presenca: number;
+  comentario_avaliacao_presenca: string | null;
   resolucao_tempo: ResolucaoTempo;
   itens_melhoria: ItemMelhoria[];
   item_melhoria_outro: string | null;

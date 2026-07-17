@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   UNIDADES,
   EQUIPAMENTO_PRINCIPAL_OPTIONS,
+  EQUIPAMENTO_PRINCIPAL_NENHUM,
   EQUIPAMENTOS_COM_NOTEBOOK,
   ACESSORIOS_NOTEBOOK_OPTIONS,
   RESOLUCAO_TEMPO_OPTIONS,
@@ -60,13 +61,23 @@ const textoAbertoOpcionalSchema = z
 
 const respostaSchemaBase = z.object({
   unidade: unidadeSchema,
-  equipamento_principal: equipamentoPrincipalSchema,
+  equipamento_principal: z
+    .array(equipamentoPrincipalSchema)
+    .min(1, "selecione ao menos 1 equipamento")
+    .refine(
+      (itens) => new Set(itens).size === itens.length,
+      "equipamento_principal não pode conter duplicados"
+    ),
   avaliacao_equipamento: estrelasSchema,
+  comentario_avaliacao_equipamento: textoAbertoOpcionalSchema,
   acessorios_notebook: acessoriosNotebookSchema,
   usa_celular_corp: z.boolean(),
   avaliacao_celular: estrelasSchema.nullable(),
+  comentario_avaliacao_celular: textoAbertoOpcionalSchema,
   avaliacao_atendimento: estrelasSchema,
+  comentario_avaliacao_atendimento: textoAbertoOpcionalSchema,
   avaliacao_presenca: estrelasSchema,
+  comentario_avaliacao_presenca: textoAbertoOpcionalSchema,
   resolucao_tempo: resolucaoTempoSchema,
   itens_melhoria: z
     .array(itemMelhoriaSchema)
@@ -85,9 +96,20 @@ const respostaSchemaBase = z.object({
 });
 
 export const respostaSchema = respostaSchemaBase.superRefine((data, ctx) => {
-  const podeTerNotebook = (
-    EQUIPAMENTOS_COM_NOTEBOOK as string[]
-  ).includes(data.equipamento_principal);
+  if (
+    data.equipamento_principal.includes(EQUIPAMENTO_PRINCIPAL_NENHUM) &&
+    data.equipamento_principal.length > 1
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["equipamento_principal"],
+      message: "'nenhum' não pode ser combinado com outras opções em equipamento_principal",
+    });
+  }
+
+  const podeTerNotebook = data.equipamento_principal.some((e) =>
+    (EQUIPAMENTOS_COM_NOTEBOOK as string[]).includes(e)
+  );
 
   if (!podeTerNotebook && data.acessorios_notebook !== "nao_utiliza") {
     ctx.addIssue({
@@ -137,11 +159,15 @@ export function paraRespostaPayload(data: RespostaValidada): RespostaPayload {
     unidade: data.unidade,
     equipamento_principal: data.equipamento_principal,
     avaliacao_equipamento: data.avaliacao_equipamento,
+    comentario_avaliacao_equipamento: data.comentario_avaliacao_equipamento,
     acessorios_notebook: data.acessorios_notebook,
     usa_celular_corp: data.usa_celular_corp,
     avaliacao_celular: data.avaliacao_celular,
+    comentario_avaliacao_celular: data.comentario_avaliacao_celular,
     avaliacao_atendimento: data.avaliacao_atendimento,
+    comentario_avaliacao_atendimento: data.comentario_avaliacao_atendimento,
     avaliacao_presenca: data.avaliacao_presenca,
+    comentario_avaliacao_presenca: data.comentario_avaliacao_presenca,
     resolucao_tempo: data.resolucao_tempo,
     itens_melhoria: data.itens_melhoria,
     item_melhoria_outro: data.item_melhoria_outro,
